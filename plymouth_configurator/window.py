@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
+from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango
 
 from . import APP_NAME, VERSION
 from .installer import InstallCoordinator
@@ -222,7 +222,10 @@ class MainWindow(Adw.ApplicationWindow):
         self.split.set_min_sidebar_width(320)
         self.split.set_max_sidebar_width(400)
         self.split.set_sidebar_width_fraction(0.3)
-        toolbar.set_content(self.split)
+
+        self.drop_overlay = Gtk.Overlay(child=self.split)
+        toolbar.set_content(self.drop_overlay)
+        self._build_drop_target()
 
         self.details = DetailsPanel(self)
         self.split.set_sidebar(self.details)
@@ -269,6 +272,43 @@ class MainWindow(Adw.ApplicationWindow):
         bp = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 900sp"))
         bp.add_setter(self.split, "collapsed", True)
         self.add_breakpoint(bp)
+
+    def _build_drop_target(self) -> None:
+        self.drop_hint = Adw.StatusPage(
+            icon_name="document-save-symbolic",
+            title="Drop to install",
+            description="Theme folders and zip / tar archives are accepted.",
+        )
+        self.drop_hint.add_css_class("drop-hint")
+        self.drop_hint.set_can_target(False)
+        self.drop_hint.set_visible(False)
+        self.drop_overlay.add_overlay(self.drop_hint)
+
+        target = Gtk.DropTarget.new(GObject.TYPE_NONE, Gdk.DragAction.COPY)
+        target.set_gtypes([Gdk.FileList, Gio.File])
+        target.connect("enter", self._on_drag_enter)
+        target.connect("leave", lambda *_: self.drop_hint.set_visible(False))
+        target.connect("drop", self._on_drop)
+        self.add_controller(target)
+
+    def _on_drag_enter(self, _target, _x, _y):
+        self.drop_hint.set_visible(True)
+        return Gdk.DragAction.COPY
+
+    def _on_drop(self, _target, value, _x, _y) -> bool:
+        self.drop_hint.set_visible(False)
+        if isinstance(value, Gdk.FileList):
+            files = value.get_files()
+        elif isinstance(value, Gio.File):
+            files = [value]
+        else:
+            return False
+        paths = [Path(f.get_path()) for f in files if f.get_path()]
+        if not paths:
+            self.toast("Only local files and folders can be dropped here")
+            return False
+        self.installer.from_paths(paths)
+        return True
 
     def _main_menu_button(self) -> Gtk.MenuButton:
         menu = Gio.Menu()

@@ -19,11 +19,39 @@ if TYPE_CHECKING:
     from .window import MainWindow
 
 
+ARCHIVE_SUFFIXES = (".zip", ".tar", ".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.bz2",
+                    ".tbz2", ".tar.zst")
+
+
+def is_archive(path: Path) -> bool:
+    name = path.name.lower()
+    return any(name.endswith(s) for s in ARCHIVE_SUFFIXES)
+
+
+def extract_archive(archive: Path) -> Path:
+    """Unpack ``archive`` into the cache and return the directory."""
+    digest = hashlib.sha1(str(archive).encode()).hexdigest()[:10]
+    stem = archive.name
+    for suffix in ARCHIVE_SUFFIXES:
+        if stem.lower().endswith(suffix):
+            stem = stem[: -len(suffix)]
+            break
+    dest = CACHE_DIR / "extract" / f"{stem}-{digest}"
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True)
+    if archive.name.lower().endswith(".zst"):
+        subprocess.run(["tar", "--zstd", "-xf", str(archive), "-C", str(dest)], check=True)
+    else:
+        shutil.unpack_archive(str(archive), str(dest))
+    return dest
+
+
 class ThemePicker(Adw.Dialog):
     """Grid of candidate themes with checkboxes; installs the chosen ones."""
 
     def __init__(self, window: "MainWindow", title: str, themes: list[ThemeInfo],
-                 installed: set[str]):
+                 installed: set[str], preselect: bool = False):
         super().__init__(title=title)
         self.window = window
         self.cards: list[ThemeCard] = []
@@ -65,6 +93,7 @@ class ThemePicker(Adw.Dialog):
                 card.badge.add_css_class("badge")
                 card.badge.add_css_class("badge-installed")
                 card.badge.set_visible(True)
+            card.check.set_active(preselect)
             card.check.connect("toggled", lambda *_: self._update_button())
             self.cards.append(card)
             self.flow.append(card)
@@ -149,27 +178,35 @@ class InstallCoordinator:
             file = dialog.open_finish(result)
         except GLib.Error:
             return
-        archive = Path(file.get_path())
+        self.from_paths([Path(file.get_path())])
+
+    def from_paths(self, paths: list[Path], title: str | None = None) -> None:
+        """Install from a mix of theme folders and archives (used by drag & drop)."""
+        dirs = [p for p in paths if p.is_dir()]
+        archives = [p for p in paths if p.is_file() and is_archive(p)]
+        ignored = [p for p in paths if p not in dirs and p not in archives]
+        if ignored:
+            self.window.toast("Ignored: " + ", ".join(p.name for p in ignored[:3])
+                              + (" …" if len(ignored) > 3 else "") + " (not a folder or archive)")
+        if not dirs and not archives:
+            return
+        if title is None:
+            names = [p.name for p in dirs + archives]
+            title = f"Themes in {names[0]}" if len(names) == 1 else f"Themes from {len(names)} items"
         self.window.set_busy(True)
 
         def work():
-            digest = hashlib.sha1(str(archive).encode()).hexdigest()[:10]
-            dest = CACHE_DIR / "extract" / f"{archive.stem}-{digest}"
-            if dest.exists():
-                shutil.rmtree(dest)
-            dest.mkdir(parents=True)
-            if archive.suffix == ".zst":
-                subprocess.run(["tar", "--zstd", "-xf", str(archive), "-C", str(dest)], check=True)
-            else:
-                shutil.unpack_archive(str(archive), str(dest))
-            return dest
+            roots = list(dirs)
+            for archive in archives:
+                roots.append(extract_archive(archive))
+            return roots
 
-        def done(dest, err):
+        def done(roots, err):
             self.window.set_busy(False)
             if err:
-                self.window.toast(f"Could not extract archive: {err}")
+                self.window.toast(f"Could not extract archive: {err}", 6)
                 return
-            self._scan_and_pick(dest, f"Themes in {archive.name}")
+            self._scan_and_pick(roots, title, preselect=True)
 
         run_in_thread(work, done)
 
@@ -205,12 +242,19 @@ class InstallCoordinator:
 
     # -- picker ------------------------------------------------------------------
 
-    def _scan_and_pick(self, root: Path, title: str) -> None:
+    def _scan_and_pick(self, roots: Path | list[Path], title: str,
+                       preselect: bool = False) -> None:
+        roots = [roots] if isinstance(roots, Path) else list(roots)
         self.window.set_busy(True)
 
         def work():
-            dirs = find_theme_dirs(root)
-            return load_theme_dirs(dirs, root=root)
+            themes, seen = [], set()
+            for root in roots:
+                for t in load_theme_dirs(find_theme_dirs(root), root=root):
+                    if t.path not in seen:
+                        seen.add(t.path)
+                        themes.append(t)
+            return themes
 
         def done(themes, err):
             self.window.set_busy(False)
@@ -222,6 +266,7 @@ class InstallCoordinator:
                 return
             themes.sort(key=lambda t: (t.source, t.name.lower()))
             installed = {t.name for t in self.window.themes}
-            ThemePicker(self.window, title, themes, installed).present(self.window)
+            ThemePicker(self.window, title, themes, installed,
+                        preselect=preselect).present(self.window)
 
         run_in_thread(work, done)

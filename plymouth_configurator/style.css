@@ -82,3 +82,13 @@ checkbutton.preview-check check:checked {
   border-color: @accent_bg_color;
   color: @accent_fg_color;
 }
+
+.drop-hint {
+  background-color: alpha(@accent_bg_color, 0.92);
+  color: @accent_fg_color;
+  margin: 12px;
+  border-radius: 16px;
+}
+.drop-hint .title, .drop-hint .description, .drop-hint .icon {
+  color: @accent_fg_color;
+}

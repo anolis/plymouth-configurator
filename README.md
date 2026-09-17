@@ -27,6 +27,9 @@ live-preview, install and remove themes without touching the terminal.
   collection (80+ themes). A picker shows previews of everything found and
   lets you install several at once. `.plymouth` paths are rewritten to the
   install location.
+- **Drag and drop.** Drop a theme folder, a folder full of themes, or a
+  zip / tar archive onto the window and the picker opens with everything
+  found already selected.
 - **Uninstall** themes you no longer want (the active theme is protected).
 - Search, keyboard shortcuts (`Ctrl+F`, `F5`, `Ctrl+O`), and a
   responsive layout that collapses the sidebar on narrow windows.
