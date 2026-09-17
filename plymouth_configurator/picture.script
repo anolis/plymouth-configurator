@@ -1,0 +1,96 @@
+# Generated picture theme. Background is scaled only when display size changes.
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
+background_image = Image("background.png");
+background_sprite = Sprite();
+background_sprite.SetZ(-100);
+panel_image = Image("password-panel.png");
+panel = Sprite();
+panel.SetZ(100);
+panel.SetOpacity(0);
+prompt_sprite = Sprite();
+prompt_sprite.SetZ(101);
+entry_sprite = Sprite();
+entry_sprite.SetZ(101);
+message_sprite = Sprite();
+message_sprite.SetZ(101);
+prompt_visible = 0;
+message_visible = 0;
+screen_width = 0;
+screen_height = 0;
+fill_screen = @FILL_SCREEN@;
+
+fun refresh() {
+    width = Window.GetWidth();
+    height = Window.GetHeight();
+    if (width != global.screen_width || height != global.screen_height) {
+        global.screen_width = width;
+        global.screen_height = height;
+        scale_x = width / background_image.GetWidth();
+        scale_y = height / background_image.GetHeight();
+        scale = scale_x;
+        if (fill_screen && scale_y > scale) scale = scale_y;
+        if (!fill_screen && scale_y < scale) scale = scale_y;
+        image = background_image.Scale(Math.Int(background_image.GetWidth() * scale),
+                                       Math.Int(background_image.GetHeight() * scale));
+        background_sprite.SetImage(image);
+        background_sprite.SetX(Window.GetX() + (width - image.GetWidth()) / 2);
+        background_sprite.SetY(Window.GetY() + (height - image.GetHeight()) / 2);
+        panel.SetImage(panel_image.Scale(width, Math.Int(height * 0.3)));
+        panel.SetX(Window.GetX());
+        panel.SetY(Window.GetY() + height * 0.7);
+        prompt_sprite.SetX(Window.GetX() + 20);
+        prompt_sprite.SetY(Window.GetY() + height * 0.73);
+        entry_sprite.SetX(Window.GetX() + 20);
+        entry_sprite.SetY(Window.GetY() + height * 0.80);
+        message_sprite.SetX(Window.GetX() + 20);
+        message_sprite.SetY(Window.GetY() + height * 0.90);
+    }
+}
+
+fun update_panel() {
+    panel.SetOpacity(prompt_visible || message_visible);
+}
+
+fun display_normal() {
+    global.prompt_visible = 0;
+    prompt_sprite.SetOpacity(0);
+    entry_sprite.SetOpacity(0);
+    update_panel();
+}
+
+fun display_question(prompt, entry) {
+    global.prompt_visible = 1;
+    prompt_sprite.SetImage(Image.Text(prompt, 1, 1, 1));
+    prompt_sprite.SetOpacity(1);
+    entry_sprite.SetImage(Image.Text(entry, 1, 1, 1));
+    entry_sprite.SetOpacity(1);
+    update_panel();
+}
+
+fun display_password(prompt, bullets) {
+    text = "";
+    for (i = 0; i < bullets; i++) text += "*";
+    display_question(prompt, text);
+}
+
+fun display_message(text) {
+    global.message_visible = 1;
+    message_sprite.SetImage(Image.Text(text, 1, 1, 1));
+    message_sprite.SetOpacity(1);
+    update_panel();
+}
+
+fun hide_message(text) {
+    global.message_visible = 0;
+    message_sprite.SetOpacity(0);
+    update_panel();
+}
+
+refresh();
+Plymouth.SetRefreshFunction(refresh);
+Plymouth.SetDisplayNormalFunction(display_normal);
+Plymouth.SetDisplayPasswordFunction(display_password);
+Plymouth.SetDisplayQuestionFunction(display_question);
+Plymouth.SetDisplayMessageFunction(display_message);
+Plymouth.SetHideMessageFunction(hide_message);

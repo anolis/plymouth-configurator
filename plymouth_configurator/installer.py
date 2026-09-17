@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import shutil
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -11,6 +9,7 @@ from typing import TYPE_CHECKING
 from gi.repository import Adw, Gio, GLib, Gtk
 
 from . import COLLECTION_URL
+from .archives import ARCHIVE_SUFFIXES, extract_archive as _extract_archive, is_archive
 from .system import CACHE_DIR, run_in_thread, which
 from .themes import ThemeInfo, find_theme_dirs, load_theme_dirs
 from .widgets import ThemeCard
@@ -19,32 +18,8 @@ if TYPE_CHECKING:
     from .window import MainWindow
 
 
-ARCHIVE_SUFFIXES = (".zip", ".tar", ".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.bz2",
-                    ".tbz2", ".tar.zst")
-
-
-def is_archive(path: Path) -> bool:
-    name = path.name.lower()
-    return any(name.endswith(s) for s in ARCHIVE_SUFFIXES)
-
-
 def extract_archive(archive: Path) -> Path:
-    """Unpack ``archive`` into the cache and return the directory."""
-    digest = hashlib.sha1(str(archive).encode()).hexdigest()[:10]
-    stem = archive.name
-    for suffix in ARCHIVE_SUFFIXES:
-        if stem.lower().endswith(suffix):
-            stem = stem[: -len(suffix)]
-            break
-    dest = CACHE_DIR / "extract" / f"{stem}-{digest}"
-    if dest.exists():
-        shutil.rmtree(dest)
-    dest.mkdir(parents=True)
-    if archive.name.lower().endswith(".zst"):
-        subprocess.run(["tar", "--zstd", "-xf", str(archive), "-C", str(dest)], check=True)
-    else:
-        shutil.unpack_archive(str(archive), str(dest))
-    return dest
+    return _extract_archive(archive, CACHE_DIR)
 
 
 class ThemePicker(Adw.Dialog):
@@ -165,8 +140,8 @@ class InstallCoordinator:
         dialog = Gtk.FileDialog(title="Choose a theme archive")
         f = Gtk.FileFilter()
         f.set_name("Archives")
-        for pattern in ("*.zip", "*.tar", "*.tar.gz", "*.tgz", "*.tar.xz", "*.tar.bz2", "*.tar.zst"):
-            f.add_pattern(pattern)
+        for suffix in ARCHIVE_SUFFIXES:
+            f.add_pattern("*" + suffix)
         filters = Gio.ListStore.new(Gtk.FileFilter)
         filters.append(f)
         dialog.set_filters(filters)

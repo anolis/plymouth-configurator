@@ -92,3 +92,6 @@ checkbutton.preview-check check:checked {
 .drop-hint .title, .drop-hint .description, .drop-hint .icon {
   color: @accent_fg_color;
 }
+.picture-preview {
+  background: black;
+}

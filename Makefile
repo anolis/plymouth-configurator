@@ -2,7 +2,10 @@ PREFIX ?= $(HOME)/.local
 APP_ID  = io.github.anolis.PlymouthConfigurator
 SRC_DIR = $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
-.PHONY: run install uninstall screenshot
+.PHONY: run install uninstall screenshot test
+
+test:
+	python3 -m unittest discover -s tests -v
 
 run:
 	python3 run.py

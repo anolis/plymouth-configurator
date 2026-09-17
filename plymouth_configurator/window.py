@@ -9,6 +9,9 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango
 
 from . import APP_NAME, VERSION
 from .installer import InstallCoordinator
+from .bootstrap import plymouth_present
+from .setup import PlymouthSetup
+from .pictures import PictureCoordinator
 from .system import (
     PrivilegedResult,
     distro_name,
@@ -167,10 +170,13 @@ class MainWindow(Adw.ApplicationWindow):
         self.cards: dict[str, ThemeCard] = {}
         self._busy = 0
         self.installer = InstallCoordinator(self)
+        self.plymouth_setup = PlymouthSetup(self)
+        self.pictures = PictureCoordinator(self)
 
         self._build_actions()
         self._build_ui()
         self.refresh()
+        GLib.idle_add(self.plymouth_setup.ensure)
 
     # -- UI ----------------------------------------------------------------------
 
@@ -185,6 +191,7 @@ class MainWindow(Adw.ApplicationWindow):
         toolbar.add_top_bar(header)
 
         install_menu = Gio.Menu()
+        install_menu.append("Use a picture…", "win.use-picture")
         install_menu.append("From folder…", "win.install-folder")
         install_menu.append("From archive (zip / tar)…", "win.install-archive")
         install_menu.append("Browse adi1090x collection…", "win.install-collection")
@@ -263,6 +270,8 @@ class MainWindow(Adw.ApplicationWindow):
         self.content_stack.add_named(loading, "loading")
 
         self.banner = Adw.Banner()
+        self.banner.set_button_label("Install Plymouth")
+        self.banner.connect("button-clicked", lambda *_: self.plymouth_setup.prompt())
         self.banner.set_revealed(False)
         toolbar.add_top_bar(self.banner)
         if not self._plymouth_present():
@@ -297,6 +306,9 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_drop(self, _target, value, _x, _y) -> bool:
         self.drop_hint.set_visible(False)
+        if self._busy:
+            self.toast("Wait for the current operation to finish")
+            return False
         if isinstance(value, Gdk.FileList):
             files = value.get_files()
         elif isinstance(value, Gio.File):
@@ -340,6 +352,7 @@ class MainWindow(Adw.ApplicationWindow):
 
         add("refresh", self.refresh)
         add("install-folder", self.installer.from_folder)
+        add("use-picture", self.pictures.choose)
         add("install-archive", self.installer.from_archive)
         add("install-collection", self.installer.from_collection)
         add("rebuild-initrd", self.rebuild_initrd)
@@ -378,9 +391,11 @@ class MainWindow(Adw.ApplicationWindow):
 
     @staticmethod
     def _plymouth_present() -> bool:
-        return Path("/usr/share/plymouth").is_dir()
+        return plymouth_present()
 
     def refresh(self) -> None:
+        self.banner.set_title("Plymouth is not installed. Install it to use a boot screen.")
+        self.banner.set_revealed(not self._plymouth_present())
         self.content_stack.set_visible_child_name("loading")
         selected = self.details.theme.name if self.details.theme else None
 
@@ -448,6 +463,9 @@ class MainWindow(Adw.ApplicationWindow):
         active = self._busy > 0
         self.spinner.set_visible(active)
         self.details.set_sensitive(not active)
+        for name in ("install-folder", "install-archive", "install-collection", "use-picture",
+                     "rebuild-initrd"):
+            self.lookup_action(name).set_enabled(not active)
 
     def show_output(self, heading: str, output: str, ok: bool) -> None:
         dialog = Adw.AlertDialog(heading=heading,
@@ -477,12 +495,15 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.present(self)
 
     def _privileged(self, args: list[str], label: str, on_ok=None,
-                    pass_display: bool = False, show_log_on_success: bool = False) -> None:
+                    pass_display: bool = False, show_log_on_success: bool = False,
+                    on_finished=None) -> None:
         self.set_busy(True)
         self.toast(f"{label}… waiting for authentication")
 
         def done(result: PrivilegedResult):
             self.set_busy(False)
+            if on_finished:
+                on_finished()
             if result.ok:
                 self.toast(f"{label}: done")
                 if show_log_on_success:
@@ -492,6 +513,8 @@ class MainWindow(Adw.ApplicationWindow):
             elif result.cancelled:
                 self.toast("Cancelled: authentication was not granted")
             else:
+                # Applying/installing can succeed before an initramfs rebuild fails.
+                self.refresh()
                 self.show_output(f"{label} failed", result.output, False)
 
         run_privileged(args, done, pass_display=pass_display)
@@ -500,6 +523,9 @@ class MainWindow(Adw.ApplicationWindow):
 
     def apply_theme(self, theme: ThemeInfo | None) -> None:
         if theme is None:
+            return
+        if not self._plymouth_present():
+            self.plymouth_setup.ensure(lambda: self.apply_theme(theme))
             return
         rebuild = bool(self.settings.get("rebuild_initrd", True))
         tool = initrd_tool()

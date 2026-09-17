@@ -12,6 +12,7 @@ and either an animation frame sequence or a single static image.
 from __future__ import annotations
 
 import configparser
+import logging
 import os
 import re
 import subprocess
@@ -61,6 +62,7 @@ class ThemeInfo:
     frames: list[Path] = field(default_factory=list)
     static_image: Path | None = None
     background_image: Path | None = None
+    background_fit: bool = False
     top_color: Color = (0.0, 0.0, 0.0)
     bottom_color: Color = (0.0, 0.0, 0.0)
     image_count: int = 0
@@ -90,7 +92,9 @@ def _read_ini(path: Path) -> configparser.ConfigParser:
     cp.optionxform = str  # keep key case
     try:
         cp.read(path, encoding="utf-8")
-    except (configparser.Error, UnicodeDecodeError):
+    except UnicodeDecodeError:
+        cp = configparser.ConfigParser(interpolation=None, strict=False)
+        cp.optionxform = str
         cp.read(path, encoding="latin-1")
     return cp
 
@@ -156,6 +160,7 @@ def analyze_images(image_dir: Path, script_text: str) -> dict:
         "frames": [],
         "static_image": None,
         "background_image": None,
+        "background_fit": bool(re.search(r"\bfill_screen\s*=\s*0\s*;", script_text)),
         "top_color": (0.0, 0.0, 0.0),
         "bottom_color": (0.0, 0.0, 0.0),
         "image_count": 0,
@@ -214,7 +219,9 @@ def analyze_images(image_dir: Path, script_text: str) -> dict:
     # Static fallback: a logo, else the biggest non-UI image.
     candidates = [p for p in pngs if p != background and not _UI_NAME_RE.search(p.stem)]
     if not candidates:
-        candidates = [p for p in pngs if p != background] or pngs
+        if background is not None:
+            return result
+        candidates = pngs
     logos = [p for p in candidates if "logo" in p.stem.lower()]
     pool = logos or candidates
     result["static_image"] = max(pool, key=_image_area)
@@ -223,6 +230,14 @@ def analyze_images(image_dir: Path, script_text: str) -> dict:
 
 def load_theme(theme_dir: Path, source: str = "") -> ThemeInfo | None:
     """Build a ThemeInfo for ``theme_dir`` or return None if it is not a theme."""
+    try:
+        return _load_theme(theme_dir, source)
+    except (configparser.Error, OSError, UnicodeError, ValueError) as exc:
+        logging.getLogger(__name__).warning("Skipping theme %s: %s", theme_dir, exc)
+        return None
+
+
+def _load_theme(theme_dir: Path, source: str) -> ThemeInfo | None:
     theme_dir = Path(theme_dir)
     plymouth_file = _find_plymouth_file(theme_dir)
     if plymouth_file is None:
@@ -230,6 +245,8 @@ def load_theme(theme_dir: Path, source: str = "") -> ThemeInfo | None:
 
     cp = _read_ini(plymouth_file)
     section = "Plymouth Theme"
+    if not cp.has_section(section):
+        raise ValueError("Missing [Plymouth Theme] section")
     title = cp.get(section, "Name", fallback=theme_dir.name).strip()
     description = cp.get(section, "Description", fallback="").strip()
     comment = cp.get(section, "Comment", fallback="").strip()
@@ -365,14 +382,17 @@ def current_theme_name() -> str | None:
         except (OSError, subprocess.SubprocessError):
             pass
     if PLYMOUTHD_CONF.is_file():
-        cp = _read_ini(PLYMOUTHD_CONF)
-        theme = cp.get("Daemon", "Theme", fallback="").strip()
-        if theme:
-            return theme
+        try:
+            cp = _read_ini(PLYMOUTHD_CONF)
+            theme = cp.get("Daemon", "Theme", fallback="").strip()
+            if theme:
+                return theme
+        except (configparser.Error, OSError):
+            pass
     default = SYSTEM_THEME_DIR / "default.plymouth"
     try:
-        target = default.resolve()
-        if target.suffix == ".plymouth":
+        target = default.resolve(strict=True)
+        if target.is_file() and target.suffix == ".plymouth":
             return target.parent.name
     except OSError:
         pass

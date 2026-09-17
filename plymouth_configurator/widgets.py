@@ -222,7 +222,8 @@ class ThemePreview(Gtk.Widget):
 
         if self._bg is not None:
             tw, th = self._bg.get_width(), self._bg.get_height()
-            scale = max(w / tw, h / th)
+            scale = (min(w / tw, h / th) if self._theme and self._theme.background_fit
+                     else max(w / tw, h / th))
             dw, dh = tw * scale, th * scale
             snapshot.append_texture(
                 self._bg, Graphene.Rect().init((w - dw) / 2, (h - dh) / 2, dw, dh)

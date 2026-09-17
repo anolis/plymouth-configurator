@@ -18,4 +18,4 @@ plymouth-configurator = "plymouth_configurator.app:main"
 packages = ["plymouth_configurator"]
 
 [tool.setuptools.package-data]
-plymouth_configurator = ["style.css"]
+plymouth_configurator = ["style.css", "picture.script"]
