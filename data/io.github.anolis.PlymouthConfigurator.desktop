@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Plymouth Configurator
+GenericName=Boot Splash Manager
+Comment=Browse, preview, install and apply Plymouth boot splash themes
+Exec=plymouth-configurator
+Icon=io.github.anolis.PlymouthConfigurator
+Terminal=false
+Categories=Settings;System;GTK;
+Keywords=plymouth;boot;splash;theme;initramfs;
+StartupNotify=true

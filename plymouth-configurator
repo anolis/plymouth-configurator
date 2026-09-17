@@ -1,0 +1,3 @@
+#!/bin/sh
+# Run the app straight from the source tree.
+exec python3 "$(dirname "$(readlink -f "$0")")/run.py" "$@"

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plymouth-configurator"
+version = "0.1.0"
+description = "A GTK4/libadwaita app to browse, preview, install and apply Plymouth boot splash themes"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = ["PyGObject>=3.46", "Pillow>=9"]
+
+[project.scripts]
+plymouth-configurator = "plymouth_configurator.app:main"
+
+[tool.setuptools]
+packages = ["plymouth_configurator"]
+
+[tool.setuptools.package-data]
+plymouth_configurator = ["style.css"]
