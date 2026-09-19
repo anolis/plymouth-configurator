@@ -5,6 +5,8 @@ boot splash themes. It shows every installed theme in a grid with a live,
 animated preview rendered from the theme's own frames, and lets you apply,
 live-preview, install and remove themes without touching the terminal.
 
+**Project page:** https://anolis.github.io/plymouth-configurator/
+
 ![Main window](screenshots/main.png)
 
 ## Features
